@@ -6277,6 +6277,18 @@ function onTimelineChange($timeline, page, options = {}) {
                 warn('hideQuotesFrom: unable to get quote tweet user')
               }
             }
+
+            // If we're viewing the separated tweets-like tab on Home (selectedHomeTabIndex >= 2)
+            // and the List: media-only option is enabled, hide non-media tweets/retweets too.
+            if (!hideItem && selectedHomeTabIndex >= 2 && config.listMediaOnly) {
+              try {
+                if ($tweet && (itemType == 'TWEET' || itemType == 'RETWEET' || itemType == 'RETWEETED_QUOTE_TWEET')) {
+                  if (!tweetHasMedia($tweet)) hideItem = true
+                }
+              } catch (e) {
+                error('listMediaOnly (home): error checking tweet media', e)
+              }
+            }
           }
           else if (isOnListTimeline) {
             hideItem = shouldHideListTimelineItem(itemType)
