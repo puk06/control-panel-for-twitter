@@ -7530,11 +7530,50 @@ async function tweakIndividualTweetPage() {
   }
 }
 
-function tweakListPage() {
+async function tweakListPage() {
   observeTimeline(currentPage, {
     checkSocialContext: true,
     hideHeadings: false,
   })
+
+  // Add a persistent header toggle button on List pages for quickly switching
+  // the "media-only" filter (useful to toggle frequently without opening menu).
+  let $heading = await getElement(`${Selectors.PRIMARY_COLUMN} ${Selectors.TIMELINE_HEADING}`, {
+    name: 'list timeline heading',
+    stopIf: pageIsNot(currentPage),
+    timeout: 5000,
+  })
+  if (!$heading) return
+
+  // Avoid adding multiple buttons
+  if ($heading.dataset.cpftMediaToggleAdded) return
+  $heading.dataset.cpftMediaToggleAdded = 'true'
+
+  let $button = document.createElement('button')
+  $button.type = 'button'
+  $button.className = 'cpft_menu_item cpft_header_button'
+  $button.style.marginLeft = '8px'
+  $button.style.fontSize = '13px'
+  $button.style.display = 'inline-flex'
+  $button.style.alignItems = 'center'
+  $button.innerHTML = `
+    <span>${config.listMediaOnly ? 'Media-only: ON' : 'Media-only: OFF'}</span>
+    <svg width="16" height="16" viewBox="0 0 24 24" style="margin-left:6px">${Svgs.RETWEET}</svg>
+  `
+  $button.addEventListener('click', (e) => {
+    e.preventDefault()
+    config.listMediaOnly = !config.listMediaOnly
+    storeConfigChanges({listMediaOnly: config.listMediaOnly})
+    $button.querySelector('span').textContent = config.listMediaOnly ? 'Media-only: ON' : 'Media-only: OFF'
+    processCurrentPage()
+  })
+
+  // Insert after the heading so it's visible near timeline controls
+  try {
+    $heading.parentElement?.appendChild($button)
+  } catch (e) {
+    warn('tweakListPage: failed to insert media-only header button', e)
+  }
 }
 
 async function tweakListsPage() {
