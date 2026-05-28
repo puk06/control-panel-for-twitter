@@ -4116,29 +4116,6 @@ async function addToggleListRetweetsMenuItem($switchMenuItem) {
   })
 
   $switchMenuItem.insertAdjacentElement('beforebegin', $toggleRetweets)
-
-  // Add a toggle to show only tweets with images/videos in Lists
-  let $toggleMedia = /** @type {HTMLElement} */ ($switchMenuItem.cloneNode(true))
-  $toggleMedia.classList.add('cpft_menu_item')
-  $toggleMedia.querySelector('span').textContent = config.listMediaOnly ? 'Turn OFF media-only filter' : 'Turn ON media-only filter'
-  $toggleMedia.querySelector('svg').innerHTML = config.listMediaOnly ? Svgs.RETWEETS_OFF : Svgs.RETWEET
-  // Remove subtitle if the cloned menu item has one
-  $toggleMedia.querySelector('div[dir] + div[dir]')?.remove()
-  $toggleMedia.addEventListener('click', (e) => {
-    e.preventDefault()
-    log('toggling list media-only filter')
-    config.listMediaOnly = !config.listMediaOnly
-    storeConfigChanges({listMediaOnly: config.listMediaOnly})
-    processCurrentPage()
-    // Dismiss the menu
-    let $menuLayer = /** @type {HTMLElement} */ ($switchMenuItem.closest('[role="group"]')?.firstElementChild?.firstElementChild)
-    if (!$menuLayer) {
-      log('could not find menu layer to dismiss menu')
-    }
-    $menuLayer?.click()
-  })
-
-  $toggleRetweets.insertAdjacentElement('beforebegin', $toggleMedia)
 }
 
 /**
@@ -6267,7 +6244,7 @@ function onTimelineChange($timeline, page, options = {}) {
           hideItem = hidPreviousItem
         } else {
           if (isOnHomeTimeline) {
-            hideItem = shouldHideHomeTimelineItem(itemType, page)
+            hideItem = shouldHideHomeTimelineItem(itemType, page, $tweet)
             if (config.mutableQuoteTweets && !hideItem && itemType == 'QUOTE_TWEET' && config.hideQuotesFrom.length > 0) {
               let $quotedByLink = /** @type {HTMLAnchorElement} */ ($tweet.querySelector('[data-testid="User-Name"] a'))
               let quotedBy = $quotedByLink?.pathname.substring(1)
@@ -6277,28 +6254,9 @@ function onTimelineChange($timeline, page, options = {}) {
                 warn('hideQuotesFrom: unable to get quote tweet user')
               }
             }
-
-            // If we're viewing the separated tweets-like tab on Home (selectedHomeTabIndex >= 2)
-            // and the List: media-only option is enabled, hide non-media tweets/retweets too.
-            if (!hideItem && selectedHomeTabIndex >= 2 && config.listMediaOnly) {
-              try {
-                if ($tweet && (itemType == 'TWEET' || itemType == 'RETWEET' || itemType == 'RETWEETED_QUOTE_TWEET')) {
-                  if (!tweetHasMedia($tweet)) hideItem = true
-                }
-              } catch (e) {
-                error('listMediaOnly (home): error checking tweet media', e)
-              }
-            }
           }
           else if (isOnListTimeline) {
-            hideItem = shouldHideListTimelineItem(itemType)
-            if (!hideItem && config.listMediaOnly) {
-              try {
-                if ($tweet && !tweetHasMedia($tweet)) hideItem = true
-              } catch (e) {
-                error('listMediaOnly: error checking tweet media', e)
-              }
-            }
+            hideItem = shouldHideListTimelineItem(itemType, $tweet)
           }
           else if (isOnProfileTimeline) {
             hideItem = shouldHideProfileTimelineItem(itemType)
@@ -7167,15 +7125,17 @@ function shouldHideIndividualTweetTimelineItem(type) {
  * @param {import("./types").TimelineItemType} type
  * @returns {boolean}
  */
-function shouldHideListTimelineItem(type) {
+function shouldHideListTimelineItem(type, tweet) {
   switch (type) {
     case 'RETWEET':
     case 'RETWEETED_QUOTE_TWEET':
-      return config.listRetweets == 'hide'
+      return config.listRetweets == 'hide' || (!config.listMediaOnly || !tweetHasMedia(tweet))
     case 'UNAVAILABLE_QUOTE_TWEET':
       return config.hideUnavailableQuoteTweets
     case 'UNAVAILABLE_RETWEET':
-      return config.hideUnavailableQuoteTweets || config.listRetweets == 'hide'
+      return config.hideUnavailableQuoteTweets || config.listRetweets == 'hide' || (!config.listMediaOnly || !tweetHasMedia(tweet))
+    case 'TWEET':
+      return !config.listMediaOnly || tweetHasMedia(tweet)
     default:
       return false
   }
@@ -7184,14 +7144,15 @@ function shouldHideListTimelineItem(type) {
 /**
  * @param {import("./types").TimelineItemType} type
  * @param {string} page
+ * @param {HTMLElement} $tweet
  * @returns {boolean}
  */
-function shouldHideHomeTimelineItem(type, page) {
+function shouldHideHomeTimelineItem(type, page, $tweet) {
   switch (type) {
     case 'QUOTE_TWEET':
       return shouldHideSharedTweet(config.quoteTweets, page)
     case 'RETWEET':
-      return selectedHomeTabIndex >= 2 ? config.listRetweets == 'hide' : shouldHideSharedTweet(config.retweets, page)
+      return selectedHomeTabIndex >= 2 ? (config.listRetweets == 'hide' && (!config.listMediaOnly || !tweetHasMedia($tweet))) : shouldHideSharedTweet(config.retweets, page)
     case 'RETWEETED_QUOTE_TWEET':
       return selectedHomeTabIndex >= 2 ? (
           config.listRetweets == 'hide'
@@ -7200,11 +7161,11 @@ function shouldHideHomeTimelineItem(type, page) {
         )
     case 'COMMUNITY_TWEET':
     case 'TWEET':
-      return page == separatedTweetsTimelineTitle
+      return selectedHomeTabIndex >= 2 ? (page == separatedTweetsTimelineTitle && (!config.listMediaOnly || !tweetHasMedia($tweet))) : page == separatedTweetsTimelineTitle
     case 'UNAVAILABLE_QUOTE_TWEET':
       return config.hideUnavailableQuoteTweets || shouldHideSharedTweet(config.quoteTweets, page)
     case 'UNAVAILABLE_RETWEET':
-      return config.hideUnavailableQuoteTweets || selectedHomeTabIndex >= 2 ? config.listRetweets == 'hide' : shouldHideSharedTweet(config.retweets, page)
+      return config.hideUnavailableQuoteTweets || selectedHomeTabIndex >= 2 ? (config.listRetweets == 'hide' && (!config.listMediaOnly || !tweetHasMedia($tweet))) : shouldHideSharedTweet(config.retweets, page)
     default:
       return true
   }
@@ -7542,50 +7503,11 @@ async function tweakIndividualTweetPage() {
   }
 }
 
-async function tweakListPage() {
+function tweakListPage() {
   observeTimeline(currentPage, {
     checkSocialContext: true,
     hideHeadings: false,
   })
-
-  // Add a persistent header toggle button on List pages for quickly switching
-  // the "media-only" filter (useful to toggle frequently without opening menu).
-  let $heading = await getElement(`${Selectors.PRIMARY_COLUMN} ${Selectors.TIMELINE_HEADING}`, {
-    name: 'list timeline heading',
-    stopIf: pageIsNot(currentPage),
-    timeout: 5000,
-  })
-  if (!$heading) return
-
-  // Avoid adding multiple buttons
-  if ($heading.dataset.cpftMediaToggleAdded) return
-  $heading.dataset.cpftMediaToggleAdded = 'true'
-
-  let $button = document.createElement('button')
-  $button.type = 'button'
-  $button.className = 'cpft_menu_item cpft_header_button'
-  $button.style.marginLeft = '8px'
-  $button.style.fontSize = '13px'
-  $button.style.display = 'inline-flex'
-  $button.style.alignItems = 'center'
-  $button.innerHTML = `
-    <span>${config.listMediaOnly ? 'Media-only: ON' : 'Media-only: OFF'}</span>
-    <svg width="16" height="16" viewBox="0 0 24 24" style="margin-left:6px">${Svgs.RETWEET}</svg>
-  `
-  $button.addEventListener('click', (e) => {
-    e.preventDefault()
-    config.listMediaOnly = !config.listMediaOnly
-    storeConfigChanges({listMediaOnly: config.listMediaOnly})
-    $button.querySelector('span').textContent = config.listMediaOnly ? 'Media-only: ON' : 'Media-only: OFF'
-    processCurrentPage()
-  })
-
-  // Insert after the heading so it's visible near timeline controls
-  try {
-    $heading.parentElement?.appendChild($button)
-  } catch (e) {
-    warn('tweakListPage: failed to insert media-only header button', e)
-  }
 }
 
 async function tweakListsPage() {
