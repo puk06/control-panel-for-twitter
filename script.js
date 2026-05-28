@@ -179,6 +179,7 @@ const config = {
   hideViews: true,
   hideWhoToFollowEtc: true,
   listRetweets: 'ignore',
+  listMediaOnly: false,
   mutableQuoteTweets: true,
   mutedQuotes: [],
   quoteTweets: 'ignore',
@@ -4115,6 +4116,29 @@ async function addToggleListRetweetsMenuItem($switchMenuItem) {
   })
 
   $switchMenuItem.insertAdjacentElement('beforebegin', $toggleRetweets)
+
+  // Add a toggle to show only tweets with images/videos in Lists
+  let $toggleMedia = /** @type {HTMLElement} */ ($switchMenuItem.cloneNode(true))
+  $toggleMedia.classList.add('cpft_menu_item')
+  $toggleMedia.querySelector('span').textContent = config.listMediaOnly ? 'Turn OFF media-only filter' : 'Turn ON media-only filter'
+  $toggleMedia.querySelector('svg').innerHTML = config.listMediaOnly ? Svgs.RETWEETS_OFF : Svgs.RETWEET
+  // Remove subtitle if the cloned menu item has one
+  $toggleMedia.querySelector('div[dir] + div[dir]')?.remove()
+  $toggleMedia.addEventListener('click', (e) => {
+    e.preventDefault()
+    log('toggling list media-only filter')
+    config.listMediaOnly = !config.listMediaOnly
+    storeConfigChanges({listMediaOnly: config.listMediaOnly})
+    processCurrentPage()
+    // Dismiss the menu
+    let $menuLayer = /** @type {HTMLElement} */ ($switchMenuItem.closest('[role="group"]')?.firstElementChild?.firstElementChild)
+    if (!$menuLayer) {
+      log('could not find menu layer to dismiss menu')
+    }
+    $menuLayer?.click()
+  })
+
+  $toggleRetweets.insertAdjacentElement('beforebegin', $toggleMedia)
 }
 
 /**
@@ -6256,6 +6280,13 @@ function onTimelineChange($timeline, page, options = {}) {
           }
           else if (isOnListTimeline) {
             hideItem = shouldHideListTimelineItem(itemType)
+            if (!hideItem && config.listMediaOnly) {
+              try {
+                if ($tweet && !tweetHasMedia($tweet)) hideItem = true
+              } catch (e) {
+                error('listMediaOnly: error checking tweet media', e)
+              }
+            }
           }
           else if (isOnProfileTimeline) {
             hideItem = shouldHideProfileTimelineItem(itemType)
@@ -7085,7 +7116,27 @@ function setTitle(page) {
  * @param {import("./types").TimelineItemType} type
  * @returns {boolean}
  */
- function shouldHideIndividualTweetTimelineItem(type) {
+ /**
+ * Check whether a tweet element contains media (images/videos/cards).
+ * @param {HTMLElement} $tweet
+ * @returns {boolean}
+ */
+function tweetHasMedia($tweet) {
+  if (!$tweet) return false
+  if ($tweet.querySelector('video')) return true
+  // Large card wrappers typically indicate media/cards
+  if ($tweet.querySelector('div[data-testid*="card"]')) return true
+  for (let img of $tweet.querySelectorAll('img')) {
+    let src = img.src || ''
+    if (!src) continue
+    // Skip avatars and emoji/twemoji images
+    if (src.includes('profile_images') || src.includes('/emoji/') || src.includes('twemoji')) continue
+    if (src.includes('twimg.com') || (img.naturalWidth && img.naturalWidth >= 100)) return true
+  }
+  return false
+}
+
+function shouldHideIndividualTweetTimelineItem(type) {
   switch (type) {
     case 'QUOTE_TWEET':
     case 'RETWEET':
