@@ -66,6 +66,7 @@ export type Config = {
   hideViews: boolean
   hideWhoToFollowEtc: boolean
   listRetweets: 'ignore' | 'hide'
+  listMediaOnly: boolean
   mutableQuoteTweets: boolean
   mutedQuotes: QuotedTweet[]
   quoteTweets: SharedTweetsConfig
