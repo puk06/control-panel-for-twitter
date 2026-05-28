@@ -305,6 +305,9 @@
   "listRetweetsLabel": {
     "message": "リスト内のリツイート"
   },
+  "listMediaOnlyLabel": {
+    "message": "リスト：メディアのみ表示"
+  },
   "mutableQuoteTweetsLabel": {
     "message": "引用ツイートのミュートを有効にする"
   },

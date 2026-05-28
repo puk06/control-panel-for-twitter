@@ -308,6 +308,9 @@
   "listRetweetsLabel": {
     "message": "Retweets in Lists"
   },
+  "listMediaOnlyLabel": {
+    "message": "Show only media (images/videos) in Lists"
+  },
   "mutableQuoteTweetsLabel": {
     "message": "Enable muting of Quote Tweets"
   },
